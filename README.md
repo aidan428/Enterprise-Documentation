@@ -18,6 +18,16 @@ Central register of Spaldotech Operations build guides, runbooks and resolution 
 | --- | --- | --- | --- | --- |
 | SPO-HL-NET-001 | [OPNsense DNS Routing Loop (10.0.99.10) Resolution Guide](docs/SPO-HL-NET-001-opnsense-dns-routing-loop-resolution-guide.md) | 1.0 | Workaround applied 22 October 2026; permanent fix to confirm | [PDF](pdf/SPO-HL-NET-001-opnsense-dns-routing-loop-resolution-guide.pdf) · [Live doc](https://claude.ai/artifact/5hKG5F85RTaAnQ3dJfXiwf) |
 
+## Context documents
+
+The founding standards the guides above are written against. Converted to Markdown from the original Word documents.
+
+| ID | Document | Version | Status |
+| --- | --- | --- | --- |
+| SPO-HL-SEC-001 | [Homelab Security Hardening Standard](context/SPO-HL-SEC-001-homelab-security-hardening-standard.md) | 1.0 | Implementation baseline |
+| — | [Homelab Technical Implementation Guide](context/homelab-technical-implementation-guide.md) | 1.0 | Target architecture |
+| — | [Naming Convention Standard](context/naming-convention-standard.md) | 1.0 | Active |
+
 ## Document IDs
 
 `SPO-HL-<AREA>-<NNN>`: an area code, then a three-digit sequence number within that area.
@@ -28,11 +38,13 @@ Central register of Spaldotech Operations build guides, runbooks and resolution 
 | SIEM | Security monitoring |
 | SLD | Technic Solder |
 | NET | Networking and routing |
+| SEC | Security standards |
 
 ## Repository layout
 
 ```
 assets/   logo and shared images
+context/  founding standards (security, architecture, naming)
 docs/     Markdown version of each document
 pdf/      PDF version of each document, with diagrams
 ```
