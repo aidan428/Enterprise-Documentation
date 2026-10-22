@@ -6,8 +6,8 @@ Documentation repository for the Spaldotech Operations homelab (owner: Aidan Spa
 
 The standards every guide must follow live in `context/`:
 
-- `context/SPO-HL-SEC-001-homelab-security-hardening-standard.md` — security baseline; reflects the **as-built** addressing (home 192.168.68.0/24, lab 10.0.x.0/24, OPNsense WAN 192.168.68.62, Proxmox 192.168.68.10).
-- `context/homelab-technical-implementation-guide.md` — original target architecture (10.10.x.0/24 VLAN plan, WireGuard, DMZ, AMP, PBS).
+- `context/SPO-HL-SEC-001-homelab-security-hardening-standard.md` — security baseline and the authoritative network inventory (§2).
+- `context/homelab-technical-implementation-guide.md` — target architecture (VLANs, WireGuard, DMZ, AMP, NFS, Plex, PBS), on the as-built addressing.
 - `context/naming-convention-standard.md` — naming for hosts, VMs, DNS, cloud, identity. New resources use `<tenant>-<role>-<seq>` (e.g. `core-proxy-01`) and `intraspald.tech` internally.
 
 **Address space: the lab uses 10.0.0.0/16.** As-built networks (from the OPNsense console, 22 Oct 2026):
