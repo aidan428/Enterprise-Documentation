@@ -1,6 +1,6 @@
 <img src="../assets/spaldotech-logo.png" alt="Spaldotech Operations" width="72">
 
-> Context document. Converted from `Spaldotech_Operations_Naming_Convention_Standard.docx` (v1.0, September 2026).
+> Context document. Converted from `Spaldotech_Operations_Naming_Convention_Standard.docx` (v1.0, September 2026); §3.3–3.4 updated to the as-built network in v1.1.
 
 # Spaldotech Operations — Naming Convention Standard
 
@@ -9,7 +9,7 @@
 | Field | Value |
 | --- | --- |
 | Classification | Internal (Confidential – Internal) |
-| Version | 1.0 — September 2026 |
+| Version | 1.1 — 22 October 2026 |
 | Author | Aidan Spalding |
 
 ## 1. Introduction & Purpose
@@ -124,15 +124,15 @@ The tenant token is `core` for shared-platform guests and the relevant tenant co
 ### 3.3 Network devices, interfaces, and VLANs
 
 - Physical/logical network devices: `<type>-<site>-<sequence>`, e.g. `fw-hq-01` (matches `core-fw-01` above, used interchangeably in network diagrams vs. inventory systems), `sw-hq-01` for the managed switch, `ap-hq-01` for a future wireless access point.
-- VLAN names stay functional and short as already defined (MGMT, SERVERS, GAMES, DMZ, TRUSTED) for the shared core network. A VLAN dedicated entirely to one tenant (rather than a shared segment) is named `<TENANT>-<PURPOSE>`, e.g. `SUB1-DMZ`, and drawn from that tenant's own reserved VLAN ID block (3.4).
+- VLAN names stay functional and short, matching the OPNsense interfaces (MGMT, STORAGE, GAMING, DMZ, IOT, and MONITORING once built) for the shared core network. A VLAN dedicated entirely to one tenant (rather than a shared segment) is named `<TENANT>-<PURPOSE>`, e.g. `SUB1-DMZ`, and drawn from that tenant's own reserved VLAN ID block (3.4).
 
 ### 3.4 IP address allocation
 
-The core platform already occupies 10.10.x.0/24 per VLAN. Each additional tenant that requires network-level isolation (rather than sharing the core VLANs) is allocated its own /16-scoped block, keeping the same last-octet convention used throughout the Technical Implementation Guide (.1 gateway, .2–.9 infrastructure, .10–.199 DHCP, .200–.254 static).
+The core platform occupies 10.0.x.0/24 per network within 10.0.0.0/16 (LAN 10.0.10, Storage 10.0.20, Gaming 10.0.30, DMZ 10.0.40, IoT 10.0.50, Monitoring 10.0.60, MGMT 10.0.99). Each additional tenant that requires network-level isolation (rather than sharing the core VLANs) is allocated its own /16-scoped block, keeping the same last-octet convention used throughout the Technical Implementation Guide (.1 gateway, .2–.9 infrastructure, .10–.199 DHCP, .200–.254 static).
 
 | Tenant | Reserved range | Status |
 | --- | --- | --- |
-| core | 10.10.0.0/16 | In use — see Technical Implementation Guide Section 4 |
+| core | 10.0.0.0/16 | In use — see SPO-HL-SEC-001 §2 |
 | ops | 10.11.0.0/16 | Reserved |
 | spd | 10.20.0.0/16 | Reserved |
 | sub1 | 10.30.0.0/16 | Reserved — allocate on onboarding |
@@ -315,7 +315,7 @@ A single consolidated view of every pattern in this document, for day-to-day use
 | Hypervisor host | `pve-<site>-<seq>` | pve-hq-01 |
 | VM / container | `<tenant>-<role>-<seq>` | core-dns-01 |
 | Network device | `<type>-<site>-<seq>` | fw-hq-01 |
-| Shared VLAN | `<FUNCTION>` | SERVERS |
+| Shared VLAN | `<FUNCTION>` | STORAGE |
 | Tenant-dedicated VLAN | `<TENANT>-<PURPOSE>` | SUB1-DMZ |
 | ZFS dataset | `rpool/<tenant>-<purpose>` | rpool/deus-data |
 | Backup job | `bkp-<tenant>-<role>-<freq>` | bkp-core-dns-daily |
@@ -382,3 +382,4 @@ A single consolidated view of every pattern in this document, for day-to-day use
 | Version | Date | Summary | Author |
 | --- | --- | --- | --- |
 | 1.0 | September 2026 | Initial naming convention standard | Aidan Spalding |
+| 1.1 | 22 October 2026 | Core address space set to 10.0.0.0/16; VLAN names aligned with OPNsense | Aidan Spalding |

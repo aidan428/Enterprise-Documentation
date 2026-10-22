@@ -24,9 +24,9 @@ The founding standards the guides above are written against. Converted to Markdo
 
 | ID | Document | Version | Status |
 | --- | --- | --- | --- |
-| SPO-HL-SEC-001 | [Homelab Security Hardening Standard](context/SPO-HL-SEC-001-homelab-security-hardening-standard.md) | 1.0 | Implementation baseline |
-| — | [Homelab Technical Implementation Guide](context/homelab-technical-implementation-guide.md) | 1.0 | Target architecture |
-| — | [Naming Convention Standard](context/naming-convention-standard.md) | 1.0 | Active |
+| SPO-HL-SEC-001 | [Homelab Security Hardening Standard](context/SPO-HL-SEC-001-homelab-security-hardening-standard.md) | 1.1 | Implementation baseline |
+| — | [Homelab Technical Implementation Guide](context/homelab-technical-implementation-guide.md) | 1.1 | Target architecture |
+| — | [Naming Convention Standard](context/naming-convention-standard.md) | 1.1 | Active |
 
 ## Document IDs
 

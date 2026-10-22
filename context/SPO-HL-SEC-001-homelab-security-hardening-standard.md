@@ -1,6 +1,6 @@
 <img src="../assets/spaldotech-logo.png" alt="Spaldotech Operations" width="72">
 
-> Context document. Converted from `Spaldotech_Operations_Homelab_Security_Hardening_Standard.docx` (v1.0, 30 September 2026).
+> Context document. Converted from `Spaldotech_Operations_Homelab_Security_Hardening_Standard.docx` (v1.0, 30 September 2026); updated to the as-built network in v1.1.
 
 # Spaldotech Operations — Homelab Security Hardening Standard
 
@@ -9,9 +9,9 @@
 | Field | Value |
 | --- | --- |
 | Document ID | SPO-HL-SEC-001 |
-| Version | 1.0 |
+| Version | 1.1 |
 | Status | Implementation Baseline |
-| Date | 30 September 2026 |
+| Date | 22 October 2026 (v1.0: 30 September 2026) |
 | Owner | Spaldotech Operations |
 | Classification | Internal / Technical |
 
@@ -46,21 +46,32 @@ The environment follows least privilege, default deny between security zones, ma
 
 ## 2. Current Environment Baseline
 
-| Component | Address / Network | Security Role | Primary Management Name |
+**Hosts**
+
+| Component | Address | Security Role | Primary Management Name |
 | --- | --- | --- | --- |
 | ISP router | 192.168.68.1 | Upstream/home gateway | home-gw |
-| Proxmox | 192.168.68.10/24 | Hypervisor / management | pve-01.intraspald.tech |
-| OPNsense WAN | 192.168.68.62/24 | Perimeter WAN | core-fw-01.intraspald.tech |
-| OPNsense LAN | 10.0.10.1/24 | Lab gateway / firewall | core-fw-01.intraspald.tech |
-| Pi-hole | 10.0.10.10/24\* | Authoritative internal DNS service | pihole-01.intraspald.tech |
-| Management | 10.0.10.0/24 | Infrastructure administration | VLAN 10 |
-| Servers | 10.0.20.0/24 | Internal server workloads | VLAN 20 |
-| DMZ | 10.0.30.0/24 | Internet-facing services | VLAN 30 |
-| Testing | 10.0.40.0/24 | Untrusted testing | VLAN 40 |
-| Storage | 10.0.50.0/24 | Storage services | VLAN 50 |
-| Home | 192.168.68.0/24 | Upstream trusted-but-external network | HOME_NET |
+| Proxmox | 192.168.68.10/22 | Hypervisor / management | pve-01.intraspald.tech |
+| OPNsense WAN | 192.168.68.62/22 (DHCP) | Perimeter WAN | core-fw-01.intraspald.tech |
+| OPNsense MGMT | 10.0.99.1/24 | Lab management gateway; Web UI | core-fw-01.intraspald.tech |
+| Pi-hole | 10.0.99.10/24 | Authoritative internal DNS service | pihole-01.intraspald.tech |
 
-\* *Replace the Pi-hole address with its actual assigned static address if different. The guide assumes the Pi-hole is reachable from the home network through the existing OPNsense routing policy.*
+**Networks** (as shown on the OPNsense console)
+
+| Network | Subnet / Gateway | OPNsense interface | VLAN | Security Role | Alias |
+| --- | --- | --- | --- | --- | --- |
+| Home | 192.168.68.0/22 | WAN (vtnet0) | — | Upstream trusted-but-external network | HOME_NET |
+| LAN | 10.0.10.0/24 / 10.0.10.1 | LAN (vtnet1) | untagged | Default lab LAN | LAN_NET |
+| Management | 10.0.99.0/24 / 10.0.99.1 | vlanMGMT (vlan01) | 90 | Infrastructure administration, DNS | MGMT_NET |
+| Storage | 10.0.20.0/24 / 10.0.20.1 | vlanStorage (vlan04) | 20† | Storage services | STORAGE_NET |
+| Gaming | 10.0.30.0/24 / 10.0.30.1 | vlanGaming (vlan05) | 30† | Game servers (AMP) | GAMING_NET |
+| DMZ | 10.0.40.0/24 / 10.0.40.1 | vlanDMZ (vlan03) | 40 | Internet-facing services | DMZ_NET |
+| IoT | 10.0.50.0/24 / 10.0.50.1 | vlanIoT (vlan02) | 50† | Untrusted IoT devices | IOT_NET |
+| Monitoring (planned) | 10.0.60.0/24 / 10.0.60.1 | — | 60 | SIEM (SPO-HL-SIEM-001) | MON_NET |
+
+† *VLAN tag inferred from the subnet; confirm against Interfaces → Devices → VLAN. The `vlan0N` names are OPNsense device names, not tags.*
+
+*The home network is a /22 (192.168.68.0–192.168.71.255). Use 192.168.68.0/22 in every HOME_NET alias and allowlist, not /24.*
 
 The upstream router contains a static route for the lab supernet (where supported): 10.0.0.0/16 via 192.168.68.62. Home-to-lab traffic is routed, not NATed. Lab-to-Internet traffic uses OPNsense outbound NAT. Proxmox management remains directly reachable on 192.168.68.10 and therefore must be treated as a privileged management endpoint.
 
@@ -178,11 +189,11 @@ Disable SSH unless it is operationally required. If SSH is required, disable roo
 
 ### 5.4 WAN protection
 
-The WAN is intentionally on the private 192.168.68.0/24 network, so OPNsense must allow the required routed home-to-lab traffic. Keep management access tightly scoped. Do not expose the Web UI, SSH or other administrative services to arbitrary WAN sources. Retain bogon filtering where appropriate for this topology.
+The WAN is intentionally on the private 192.168.68.0/22 network, so OPNsense must allow the required routed home-to-lab traffic. Keep management access tightly scoped. Do not expose the Web UI, SSH or other administrative services to arbitrary WAN sources. Retain bogon filtering where appropriate for this topology.
 
 ### 5.5 Firewall policy
 
-Create aliases such as `HOME_NET=192.168.68.0/24`, `MGMT_NET=10.0.10.0/24`, `SERVER_NET=10.0.20.0/24`, `DMZ_NET=10.0.30.0/24` and `STORAGE_NET=10.0.50.0/24`. Use explicit service rules instead of broad network-to-network permits.
+Create the aliases listed in §2: `HOME_NET=192.168.68.0/22`, `LAN_NET=10.0.10.0/24`, `MGMT_NET=10.0.99.0/24`, `STORAGE_NET=10.0.20.0/24`, `GAMING_NET=10.0.30.0/24`, `DMZ_NET=10.0.40.0/24`, `IOT_NET=10.0.50.0/24` and, once built, `MON_NET=10.0.60.0/24`. Use explicit service rules instead of broad network-to-network permits.
 
 | Traffic | Policy | Purpose |
 | --- | --- | --- |
@@ -192,7 +203,8 @@ Create aliases such as `HOME_NET=192.168.68.0/24`, `MGMT_NET=10.0.10.0/24`, `SER
 | HOME_NET → Lab servers | Allow only required services | Controlled access |
 | DMZ → HOME_NET | Deny by default | Containment |
 | DMZ → MGMT_NET | Deny by default | Containment |
-| Testing → MGMT/STORAGE | Deny by default | Untrusted isolation |
+| GAMING → MGMT/STORAGE/HOME | Deny by default | Containment |
+| IoT → MGMT/STORAGE/HOME | Deny by default (DNS to Pi-hole only) | Untrusted isolation |
 | Lab → Internet | Allow required outbound | Updates/services |
 | Internet/WAN → Management | Deny | No exposed management |
 
@@ -219,7 +231,7 @@ Export an encrypted OPNsense configuration backup before major changes. Store ba
 - SSH is disabled unless explicitly required.
 - Home-to-lab traffic follows the intended static route.
 - DMZ cannot initiate connections to Management or Home unless explicitly required.
-- Testing cannot initiate connections to Storage/Management unless explicitly required.
+- Gaming and IoT cannot initiate connections to Storage/Management unless explicitly required.
 - Pi-hole receives DNS queries from approved networks only.
 - Internet-facing management ports are not exposed.
 
@@ -237,7 +249,7 @@ resolvectl status
 sudo hostnamectl set-hostname pihole-01
 ```
 
-Use a static/reserved address for Pi-hole. Ensure the system's hostname and local DNS record agree. Example: `pihole-01.intraspald.tech → 10.0.10.10`.
+Use a static/reserved address for Pi-hole. Ensure the system's hostname and local DNS record agree. Example: `pihole-01.intraspald.tech → 10.0.99.10`.
 
 ### 6.2 Update the operating system
 
@@ -357,7 +369,7 @@ sudo ss -lntup
 
 ### 6.13 Pi-hole validation
 
-- DNS resolution works from 192.168.68.0/24 and approved lab VLANs.
+- DNS resolution works from 192.168.68.0/22 and approved lab VLANs.
 - DNS queries from an unapproved source are blocked.
 - Pi-hole Web UI is reachable only from approved administration sources.
 - SSH is key-only and root login is disabled.
@@ -390,16 +402,19 @@ The security model should make OPNsense the policy enforcement point between sec
 
 | Source | Destination | Default policy |
 | --- | --- | --- |
-| 192.168.68.0/24 | 10.0.10.1 HTTPS | Allow administration |
-| 192.168.68.0/24 | 10.0.10.10 TCP/UDP 53 | Allow DNS |
-| 192.168.68.0/24 | 10.0.10.10 HTTPS | Allow Pi-hole administration |
-| 192.168.68.0/24 | 10.0.20.0/24 | Deny; add service exceptions |
-| 192.168.68.0/24 | 10.0.30.0/24 | Deny; add service exceptions |
-| 10.0.30.0/24 | 192.168.68.0/24 | Deny |
-| 10.0.30.0/24 | 10.0.10.0/24 | Deny |
-| 10.0.40.0/24 | 10.0.10.0/24 | Deny unless required |
-| 10.0.40.0/24 | 10.0.50.0/24 | Deny |
-| 10.0.50.0/24 | 10.0.30.0/24 | Deny |
+| 192.168.68.0/22 | 10.0.99.1 HTTPS | Allow administration |
+| 192.168.68.0/22 | 10.0.99.10 TCP/UDP 53 | Allow DNS |
+| 192.168.68.0/22 | 10.0.99.10 HTTPS | Allow Pi-hole administration |
+| 192.168.68.0/22 | 10.0.20.0/24 (Storage) | Deny; add service exceptions |
+| 192.168.68.0/22 | 10.0.30.0/24 (Gaming) | Deny; add game-port exceptions |
+| 192.168.68.0/22 | 10.0.40.0/24 (DMZ) | Deny; add service exceptions |
+| 10.0.40.0/24 (DMZ) | 192.168.68.0/22 | Deny |
+| 10.0.40.0/24 (DMZ) | 10.0.99.0/24 (MGMT) | Deny |
+| 10.0.40.0/24 (DMZ) | 10.0.20.0/24 (Storage) | Deny |
+| 10.0.30.0/24 (Gaming) | 10.0.99.0/24, 10.0.20.0/24 | Deny |
+| 10.0.50.0/24 (IoT) | 10.0.99.10 TCP/UDP 53 | Allow DNS |
+| 10.0.50.0/24 (IoT) | All other lab and home networks | Deny |
+| Lab VLANs | 10.0.60.10 TCP 1514–1515 | Allow SIEM agents (once SPO-HL-SIEM-001 is built) |
 | Lab VLANs | Internet | Allow required outbound only |
 
 *Because Proxmox itself sits on 192.168.68.10, OPNsense cannot protect the Proxmox management interface from other devices already trusted by the home LAN. Protect Proxmox with its own firewall, MFA and restricted source networks.*
@@ -416,11 +431,11 @@ The security model should make OPNsense the policy enforcement point between sec
 | H06 | Access Proxmox 8006 from unapproved source | Blocked |
 | H07 | Access OPNsense GUI over HTTPS | Allowed from admin source |
 | H08 | OPNsense GUI from WAN/Internet | Blocked |
-| H09 | Home client resolves Pi-hole local name | Returns 10.0.10.x address |
+| H09 | Home client resolves Pi-hole local name | Returns 10.0.99.10 |
 | H10 | Home client queries Pi-hole DNS | Succeeds |
 | H11 | Unapproved client queries Pi-hole DNS | Blocked |
 | H12 | DMZ initiates connection to Management | Blocked |
-| H13 | Testing initiates connection to Storage | Blocked |
+| H13 | IoT or Gaming initiates connection to Storage | Blocked |
 | H14 | Lab VM reaches Internet | Succeeds through OPNsense NAT |
 | H15 | Pi-hole survives reboot | DNS and Web UI return |
 | H16 | Proxmox survives reboot | OPNsense starts and lab returns to service |
@@ -433,7 +448,7 @@ nslookup pihole-01.intraspald.tech
 
 :: Windows route verification
 route print
-tracert 10.0.10.10
+tracert 10.0.99.10
 ```
 
 ```bash
@@ -484,7 +499,7 @@ Maintain a change record for firewall exceptions, port forwards, new management 
 - [ ] Pi-hole uses a trusted internal certificate where practical.
 - [ ] Home DNS traffic to Pi-hole is explicitly permitted.
 - [ ] DMZ cannot initiate connections into Management/Home by default.
-- [ ] Testing cannot access Storage/Management by default.
+- [ ] Gaming and IoT cannot access Storage/Management by default.
 - [ ] Configuration backups exist for all three platforms.
 - [ ] Acceptance tests H01–H16 have passed or deviations are documented.
 
@@ -494,16 +509,16 @@ Maintain a change record for firewall exceptions, port forwards, new management 
 
 | Service | Port | Source | Destination | Action |
 | --- | --- | --- | --- | --- |
-| Proxmox Web UI | TCP 8006 | HOME_NET/admin VLAN | 192.168.68.10 | Allow |
+| Proxmox Web UI | TCP 8006 | HOME_NET/MGMT_NET | 192.168.68.10 | Allow |
 | Proxmox SSH | TCP 22 | Admin source only | 192.168.68.10 | Allow if required |
-| OPNsense Web UI | TCP 443 | HOME_NET/admin VLAN | 10.0.10.1 | Allow |
-| OPNsense SSH | TCP 22 | Admin source only | 10.0.10.1 | Deny unless required |
-| Pi-hole DNS | TCP/UDP 53 | HOME_NET + approved VLANs | 10.0.10.10 | Allow |
-| Pi-hole Web UI | TCP 443 | Admin source only | 10.0.10.10 | Allow |
-| Pi-hole SSH | TCP 22 | Admin source only | 10.0.10.10 | Allow if required |
+| OPNsense Web UI | TCP 443 | HOME_NET/MGMT_NET | 10.0.99.1 | Allow |
+| OPNsense SSH | TCP 22 | Admin source only | 10.0.99.1 | Deny unless required |
+| Pi-hole DNS | TCP/UDP 53 | HOME_NET + approved VLANs | 10.0.99.10 | Allow |
+| Pi-hole Web UI | TCP 443 | Admin source only | 10.0.99.10 | Allow |
+| Pi-hole SSH | TCP 22 | Admin source only | 10.0.99.10 | Allow if required |
 | All management | Any | Internet/WAN | Lab management | Deny |
 
-*Adjust the Pi-hole address if it differs from 10.0.10.10. Do not expose the listed management services through ISP-router port forwarding.*
+*Do not expose the listed management services through ISP-router port forwarding.*
 
 ## Appendix B — Security Notes and References
 

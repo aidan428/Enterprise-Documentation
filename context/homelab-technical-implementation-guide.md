@@ -1,6 +1,6 @@
 <img src="../assets/spaldotech-logo.png" alt="Spaldotech Operations" width="72">
 
-> Context document. Converted from `Spaldotech_Operations_Homelab_Technical_Implementation_Guide.docx` (v1.0, September 2026).
+> Context document. Converted from `Spaldotech_Operations_Homelab_Technical_Implementation_Guide.docx` (v1.0, September 2026); network sections updated to the as-built 10.0.0.0/16 design in v1.1. SPO-HL-SEC-001 §2 is the authoritative network inventory.
 
 # Spaldotech Operations — Homelab Technical Implementation Guide
 
@@ -11,7 +11,7 @@
 | Classification | Internal (Confidential – Internal) |
 | Internal domain | intraspald.tech |
 | External domain | spaldotechoperations.co.uk |
-| Version | 1.0 — September 2026 |
+| Version | 1.1 — 22 October 2026 |
 | Owner | Spaldotech Operations |
 
 ## 1. Introduction & Scope
@@ -100,9 +100,9 @@ Suggested logical carve-up of the 4TB (adjust to actual free space after the abo
 
 The host itself should carry minimal network exposure. Configure Linux bridges as follows:
 
-- **vmbr0** — trunk bridge carrying all internal VLANs (10/20/30/40/50), connected to the physical NIC that runs to your managed switch trunk port. VM/LXC virtual NICs attach here with a VLAN tag set per-guest (Proxmox supports VLAN-aware bridges natively — enable "VLAN aware" on vmbr0).
+- **vmbr0** — trunk bridge carrying all internal VLANs (20/30/40/50/90, plus 60 once Monitoring is built), connected to the physical NIC that runs to your managed switch trunk port. VM/LXC virtual NICs attach here with a VLAN tag set per-guest (Proxmox supports VLAN-aware bridges natively — enable "VLAN aware" on vmbr0).
 - **vmbr1** — dedicated to the WAN physical NIC, with no IP configured on the Proxmox host side at all. This interface is passed straight through to the OPNsense VM (Section 5.1); the host should not have a routable presence on the WAN segment.
-- The Proxmox management IP itself lives only as a VLAN-tagged interface on vmbr0 within the Management VLAN — it must not be reachable from the Servers, Game, or DMZ VLANs (enforced later in OPNsense firewall rules, Section 5.3).
+- The Proxmox management IP itself lives only as a VLAN-tagged interface on vmbr0 within the Management VLAN — it must not be reachable from the Gaming, IoT or DMZ VLANs (enforced later in OPNsense firewall rules, Section 5.3).
 
 ### 3.3 Host hardening
 
@@ -121,7 +121,7 @@ Indicative allocation of the 64GB host memory budget across all guests. Sizes ar
 | Guest | Type | vCPU | RAM | Notes |
 | --- | --- | --- | --- | --- |
 | OPNsense | VM | 2 | 4 GB | WAN NIC via PCIe passthrough; 2 vCPU is ample for home-scale throughput |
-| dns01 (Pi-hole + Unbound) | LXC | 1 | 1 GB | Servers VLAN |
+| dns01 / pihole-01 (Pi-hole + Unbound) | LXC | 1 | 1 GB | MGMT VLAN (10.0.99.10) |
 | nfs01 | LXC or VM | 2 | 2–4 GB | VM if ZFS-on-guest is wanted, else LXC bind-mount is lighter |
 | proxy01 (reverse proxy) | LXC | 1 | 1 GB | DMZ VLAN, the only thing WAN traffic ever reaches |
 | plex01 | LXC | 2–4 | 4–8 GB | Add PCIe/iGPU passthrough if hardware transcoding is desired |
@@ -144,11 +144,15 @@ The design uses a single physical firewall (OPNsense, virtualised) as the sole b
 
 | VLAN ID | Name | Subnet | Purpose | Internet access |
 | --- | --- | --- | --- | --- |
-| 10 | MGMT | 10.10.10.0/24 | Proxmox GUI, iLO, OPNsense GUI, PBS | Outbound updates only, no inbound |
-| 20 | SERVERS | 10.10.20.0/24 | Pi-hole/Unbound, NFS, Plex | Outbound only |
-| 30 | GAMES | 10.10.30.0/24 | CubeCoders AMP and hosted game server instances | Outbound + specific inbound game ports only |
-| 40 | DMZ | 10.10.40.0/24 | Reverse proxy, published web VMs | Inbound 443/80 (proxy only), outbound restricted |
-| 50 | TRUSTED | 10.10.50.0/24 | Personal devices, Wi-Fi clients | Full outbound, limited inbound to Servers VLAN |
+| — | LAN | 10.0.10.0/24 | Default lab LAN (untagged, OPNsense vtnet1) | Outbound |
+| 90 | MGMT | 10.0.99.0/24 | OPNsense GUI, Pi-hole/Unbound, iLO, PBS | Outbound updates only, no inbound |
+| 20 | STORAGE | 10.0.20.0/24 | NFS, Plex | Outbound only |
+| 30 | GAMING | 10.0.30.0/24 | CubeCoders AMP and hosted game server instances | Outbound + specific inbound game ports only |
+| 40 | DMZ | 10.0.40.0/24 | Reverse proxy, published web VMs | Inbound 443 and 8443 (proxy only), outbound restricted |
+| 50 | IOT | 10.0.50.0/24 | IoT devices | Outbound only; DNS to Pi-hole, nothing else internal |
+| 60 | MONITORING (planned) | 10.0.60.0/24 | SIEM (SPO-HL-SIEM-001) | Outbound 443 only |
+
+Personal devices and Wi-Fi clients are not on a lab VLAN: they sit on the home network, 192.168.68.0/22, behind the ISP router, and reach the lab through the static route for 10.0.0.0/16 via OPNsense's WAN address (192.168.68.62). The Proxmox host is also on the home network, at 192.168.68.10. VLAN tags 20, 30 and 50 are inferred from their subnets; confirm them on OPNsense.
 
 ### 4.3 IP addressing plan
 
@@ -176,7 +180,7 @@ Confirm physical port mapping against the DL380 Gen9's NIC layout before wiring:
 
 - Create the OPNsense VM in Proxmox with 2 vCPU, 4GB RAM, and a small (8–16GB) virtual disk for the OS.
 - Enable IOMMU on the Proxmox host (`intel_iommu=on` or `amd_iommu=on` in kernel parameters, plus `vfio` modules loaded) and pass the physical WAN NIC through to the OPNsense VM as a PCIe device, rather than bridging it in software.
-- Add a second (virtual) NIC on the VLAN-aware vmbr0 trunk as the OPNsense LAN interface; configure VLAN sub-interfaces inside OPNsense (Interfaces → Assignments → VLANs) for each of the five VLANs in 4.2, all riding this one virtual NIC.
+- Add a second (virtual) NIC on the VLAN-aware vmbr0 trunk as the OPNsense LAN interface; configure VLAN sub-interfaces inside OPNsense (Interfaces → Assignments → VLANs) for each VLAN in 4.2, all riding this one virtual NIC.
 - Install OPNsense from ISO, assign WAN to the passthrough NIC and LAN (trunk) to the virtual NIC, then complete VLAN and interface assignment from the console/GUI.
 - Configure DHCP per internal VLAN (scope ranges per 4.3), with OPNsense itself as the DNS server handed out to clients (it will forward to Pi-hole, see Section 6).
 
@@ -186,11 +190,13 @@ Confirm physical port mapping against the DL380 Gen9's NIC layout before wiring:
 | --- | --- | --- |
 | WAN | Physical NIC (PCIe passthrough) | Internet uplink, holds public IP |
 | LAN (trunk) | Virtual NIC on vmbr0 | Parent interface for all VLAN sub-interfaces |
-| MGMT (VLAN10) | Sub-interface of LAN | Proxmox GUI, iLO, OPNsense GUI, PBS |
-| SERVERS (VLAN20) | Sub-interface of LAN | DNS, NFS, Plex |
-| GAMES (VLAN30) | Sub-interface of LAN | AMP and game server instances |
-| DMZ (VLAN40) | Sub-interface of LAN | Reverse proxy, published web VMs |
-| TRUSTED (VLAN50) | Sub-interface of LAN | Personal/Wi-Fi clients |
+| vlanMGMT (VLAN 90) | Sub-interface of LAN | OPNsense GUI, Pi-hole, iLO, PBS |
+| vlanStorage (VLAN 20) | Sub-interface of LAN | NFS, Plex |
+| vlanGaming (VLAN 30) | Sub-interface of LAN | AMP and game server instances |
+| vlanDMZ (VLAN 40) | Sub-interface of LAN | Reverse proxy, published web VMs |
+| vlanIoT (VLAN 50) | Sub-interface of LAN | IoT devices |
+
+> **As built:** the WAN (vtnet0) is a virtual NIC taking a DHCP address, 192.168.68.62/22, from the ISP router rather than holding the public IP; the ISP router port-forwards to it. The LAN (vtnet1, 10.0.10.1/24) is the untagged parent of the VLANs.
 
 ### 5.3 Firewall rule sets
 
@@ -200,45 +206,49 @@ Default policy on every interface is block-all inbound; the rules below are the 
 
 | # | Source | Destination | Port | Action | Reason |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Any | DMZ proxy (10.10.40.2) | 443/tcp | Allow | Published HTTPS for spaldotechoperations.co.uk |
-| 2 | Any | DMZ proxy (10.10.40.2) | 80/tcp | Allow (redirect only) | HTTP→HTTPS redirect / ACME challenge |
+| 1 | Cloudflare ranges | DMZ proxy (10.0.40.10) | 443/tcp | Allow | Published HTTPS for spaldotechoperations.co.uk |
+| 2 | Any | DMZ proxy (10.0.40.10) | 8443/tcp | Allow | Plex via Caddy (SPO-HL-PRX-001) |
 | 3 | Any | OPNsense WAN | 51820/udp | Allow | WireGuard remote administration endpoint |
-| 4 | Any | GAMES VLAN specific host:port | per game | Allow (as needed) | Only the exact ports of currently-published game servers |
+| 4 | Any | Gaming VLAN specific host:port | per game | Allow (as needed) | Only the exact ports of currently-published game servers |
 | 5 | Any | Any | Any | Block + log | Default deny, logged for review |
 
 #### 5.3.2 Inter-VLAN policy matrix
 
 Rows are source, columns are destination. Allow = specific ports only per 5.3.3, not a blanket allow.
 
-| Source \ Dest | MGMT | SERVERS | GAMES | DMZ | TRUSTED | WAN |
-| --- | --- | --- | --- | --- | --- | --- |
-| MGMT | — | Allow (admin) | Allow (admin) | Allow (admin) | Deny | Allow |
-| SERVERS | Deny | — | Deny | Deny | Allow (DNS/NFS resp.) | Allow |
-| GAMES | Deny | Deny | — | Deny | Deny | Allow |
-| DMZ | Deny | Deny | Deny | — | Deny | Allow (restricted) |
-| TRUSTED | Deny | Allow (DNS/NFS/Plex) | Allow (game client ports) | Allow (443) | — | Allow |
+| Source \ Dest | MGMT | STORAGE | GAMING | DMZ | IOT | HOME | WAN |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| MGMT | — | Allow (admin) | Allow (admin) | Allow (admin) | Allow (admin) | Deny | Allow |
+| STORAGE | Deny | — | Deny | Deny | Deny | Deny | Allow |
+| GAMING | DNS only | Deny | — | Deny | Deny | Deny | Allow |
+| DMZ | Deny | Plex only (proxy → plex01:32400) | Deny | — | Deny | Deny | Allow (restricted) |
+| IOT | DNS only | Deny | Deny | Deny | — | Deny | Allow |
+| HOME | Allow (admin, DNS) | Allow (NFS/Plex) | Allow (game client ports) | Allow (443) | Deny | — | n/a |
+
+HOME is 192.168.68.0/22, arriving on the WAN interface through the ISP router's static route. "DNS only" means TCP/UDP 53 to Pi-hole at 10.0.99.10.
 
 #### 5.3.3 Notable specific rules
 
-- **SERVERS → anywhere:** no rule permits SERVERS-VLAN hosts to initiate connections into MGMT, GAMES, or DMZ — DNS and NFS only ever respond to inbound requests from TRUSTED/permitted sources, they do not need to originate connections elsewhere.
-- **TRUSTED → SERVERS:** allow only 53/tcp+udp (DNS), 2049/tcp (NFS) from specific known client IPs, and Plex's discovery/streaming ports — not an open allow to the whole subnet.
-- **DMZ → SERVERS/GAMES/MGMT:** explicitly denied in all directions. If a DMZ host is compromised, this rule is what stops the compromise pivoting inward.
-- **GAMES → WAN:** allowed outbound (game servers need to reach master server lists, updates, Steam/matchmaking services, etc.), but GAMES → any other internal VLAN is denied.
-- **MGMT → everywhere:** MGMT is the administrator's own launch point, so it is permitted to reach admin ports (SSH/HTTPS management UIs) on every other VLAN — but nothing is permitted to reach MGMT except from MGMT itself or over the WireGuard tunnel in 5.5.
+- **STORAGE → anywhere:** no rule permits Storage-VLAN hosts to initiate connections into MGMT, GAMING, DMZ or IOT — NFS and Plex only ever respond to inbound requests from permitted sources.
+- **HOME → STORAGE:** allow only 2049/tcp (NFS) from specific known client IPs, and Plex's discovery/streaming ports — not an open allow to the whole subnet.
+- **DMZ → MGMT/STORAGE/GAMING/IOT:** denied, except the single proxy-to-Plex rule above. If a DMZ host is compromised, this rule is what stops the compromise pivoting inward.
+- **GAMING → WAN:** allowed outbound (game servers need to reach master server lists, updates, Steam/matchmaking services, etc.), but GAMING → any other internal VLAN is denied apart from DNS.
+- **IOT:** treated as untrusted; DNS to Pi-hole and outbound Internet only.
+- **MGMT → everywhere:** MGMT is the administrator's own launch point, so it is permitted to reach admin ports (SSH/HTTPS management UIs) on every other VLAN — but nothing is permitted to reach MGMT except from MGMT itself, approved home admin sources, or the WireGuard tunnel in 5.5. Every VLAN may reach Pi-hole on port 53.
 
 ### 5.4 Intrusion detection / prevention (Suricata)
 
 - Enable Suricata in IPS (blocking) mode on the WAN interface, using the ET Open ruleset at minimum, updated automatically on a daily schedule.
-- Enable Suricata in IDS (alerting) mode on the DMZ and GAMES interfaces — IPS mode here risks false-positive blocking of legitimate game traffic, but visibility into exactly what's hitting these two exposed segments is valuable.
+- Enable Suricata in IDS (alerting) mode on the DMZ and Gaming interfaces — IPS mode here risks false-positive blocking of legitimate game traffic, but visibility into exactly what's hitting these two exposed segments is valuable.
 - Route Suricata alerts to a log destination reviewed regularly (Section 12) rather than left to accumulate unread.
 
 ### 5.5 Remote access — WireGuard
 
 All remote administration (Proxmox GUI, OPNsense GUI itself, AMP admin panel, SSH) is reached exclusively through a WireGuard tunnel terminating on OPNsense, never via direct WAN port-forwards.
 
-- Enable the WireGuard plugin on OPNsense, create a server instance bound to a dedicated tunnel subnet (e.g. 10.10.99.0/24), listening on a single UDP port forwarded from WAN (rule #3 in 5.3.1).
+- Enable the WireGuard plugin on OPNsense, create a server instance bound to a dedicated tunnel subnet (e.g. 10.0.100.0/24, which no VLAN uses), listening on a single UDP port forwarded from WAN (rule #3 in 5.3.1).
 - Issue a unique key pair and peer configuration per administrator device — never share one WireGuard identity across devices.
-- Add a firewall rule on the WireGuard interface permitting tunnel clients into MGMT (and, per admin need, SERVERS/GAMES/DMZ admin ports) — this is the only path by which an external device reaches MGMT.
+- Add a firewall rule on the WireGuard interface permitting tunnel clients into MGMT (and, per admin need, Storage/Gaming/DMZ admin ports) — this is the only path by which an external device reaches MGMT.
 - Where the client device supports it, enable a kill-switch/always-on tunnel policy for administrator laptops so accidental unencrypted admin sessions cannot happen while off the home network.
 
 ## 6. DNS Architecture
@@ -247,14 +257,14 @@ All remote administration (Proxmox GUI, OPNsense GUI itself, AMP admin panel, SS
 
 Two distinct DNS name spaces are served by this platform, and they must never be resolvable through each other's path:
 
-- **intraspald.tech** — the internal-only domain. Resolved exclusively by the internal Pi-hole/Unbound resolver for clients on TRUSTED/SERVERS/MGMT/GAMES VLANs. There is no public DNS zone for this domain, and it must not be delegated or published externally.
+- **intraspald.tech** — the internal-only domain. Resolved exclusively by the internal Pi-hole/Unbound resolver for clients on the home network and every lab VLAN. There is no public DNS zone for this domain, and it must not be delegated or published externally.
 - **spaldotechoperations.co.uk** — the external domain, published in public DNS at a registrar/DNS provider, pointing only at the reverse proxy's public presence (Section 9).
 
 ### 6.2 Pi-hole + Unbound deployment
 
-- Deploy an LXC container (dns01) on the SERVERS VLAN running Pi-hole for DNS filtering/blocklists and DHCP-handed-out resolution.
+- Deploy an LXC container (dns01, as built pihole-01 at 10.0.99.10) on the MGMT VLAN running Pi-hole for DNS filtering/blocklists and DHCP-handed-out resolution.
 - Install Unbound alongside Pi-hole on the same container, configured as a local recursive resolver querying the DNS root hints directly — this avoids dependency on any third-party upstream resolver for basic functioning, and pairs well with Pi-hole's "Custom 2" upstream slot pointing at `127.0.0.1#5335`.
-- Set OPNsense's DHCP options to hand out dns01's SERVERS-VLAN address as the DNS server for every internal VLAN, and configure OPNsense's own DNS resolver/forwarder to relay to dns01 as well, so OPNsense-originated lookups (e.g. dynamic DNS, package updates) are also filtered and logged centrally.
+- Set OPNsense's DHCP options to hand out dns01's address (10.0.99.10) as the DNS server for every internal VLAN, and configure OPNsense's own DNS resolver/forwarder to relay to dns01 as well, so OPNsense-originated lookups (e.g. dynamic DNS, package updates) are also filtered and logged centrally.
 - Deploy a second Pi-hole instance (or at minimum Unbound-only secondary) if resilience against a single dns01 outage is wanted; Pi-hole supports Gravity sync between two instances.
 
 ### 6.3 intraspald.tech internal zone
@@ -263,13 +273,13 @@ Using Pi-hole's Local DNS Records (or a dedicated Unbound local-zone file for mo
 
 | Hostname | Points to | Service |
 | --- | --- | --- |
-| proxmox.intraspald.tech | 10.10.10.5 | Proxmox web GUI |
-| opnsense.intraspald.tech | 10.10.10.1 | OPNsense web GUI |
-| pihole.intraspald.tech | 10.10.20.2 | Pi-hole admin UI |
-| nfs.intraspald.tech | 10.10.20.3 | NFS server |
-| plex.intraspald.tech | 10.10.20.4 | Plex media server |
-| amp.intraspald.tech | 10.10.30.2 | CubeCoders AMP admin panel |
-| pbs.intraspald.tech | 10.10.10.6 | Proxmox Backup Server |
+| proxmox.intraspald.tech | 192.168.68.10 | Proxmox web GUI |
+| opnsense.intraspald.tech | 10.0.99.1 | OPNsense web GUI |
+| pihole.intraspald.tech | 10.0.99.10 | Pi-hole admin UI |
+| nfs.intraspald.tech | 10.0.20.10 (planned) | NFS server |
+| plex.intraspald.tech | 10.0.20.11 (planned) | Plex media server |
+| amp.intraspald.tech | 10.0.30.10 (planned) | CubeCoders AMP admin panel |
+| pbs.intraspald.tech | 10.0.99.20 (planned) | Proxmox Backup Server |
 
 > **Note:** Admin-panel hostnames (proxmox, opnsense, amp, pbs) resolve internally but must only actually be reachable per the firewall matrix in 5.3.2 — DNS resolution and network reachability are separate controls and both are required.
 
@@ -284,7 +294,7 @@ Using Pi-hole's Local DNS Records (or a dedicated Unbound local-zone file for mo
 
 ### 7.1 Deployment
 
-- Deploy nfs01 on the SERVERS VLAN as an LXC container (or a small VM if ZFS-on-guest is preferred for its own snapshot/replication features) with its data disk backed by the media dataset described in 2.2.
+- Deploy nfs01 on the Storage VLAN as an LXC container (or a small VM if ZFS-on-guest is preferred for its own snapshot/replication features) with its data disk backed by the media dataset described in 2.2.
 - Install `nfs-kernel-server` (Debian/Ubuntu base) and configure NFSv4 only — disable NFSv3 support to avoid its weaker RPC-based access control model.
 - Use a single NFSv4 pseudo-root export with sub-exports/binds for logical shares (media, backups, general), which keeps client mount syntax simple and centralises export options.
 
@@ -293,19 +303,19 @@ Using Pi-hole's Local DNS Records (or a dedicated Unbound local-zone file for mo
 - Every export line in `/etc/exports` names explicit client IPs or a tightly-scoped subnet — never `*` and never a whole /24 unless every host in that /24 is genuinely meant to have access.
 - Use `rw` only for the specific clients that need write access (e.g. the Plex server for library management, an admin workstation); default everything else to `ro`.
 - Apply `root_squash` (the NFS default) on every export — never `no_root_squash` — so a root user on a client cannot act as root on the NFS server's filesystem.
-- Restrict the NFS ports (2049/tcp, plus rpcbind if NFSv3 compatibility is ever required) at the OPNsense firewall to only the SERVERS and TRUSTED VLANs, per the matrix in 5.3.2 — GAMES and DMZ have no firewall path to NFS at all, regardless of export file contents.
+- Restrict the NFS ports (2049/tcp, plus rpcbind if NFSv3 compatibility is ever required) at the OPNsense firewall to only the Storage VLAN and approved home clients, per the matrix in 5.3.2 — Gaming, IoT and DMZ have no firewall path to NFS at all, regardless of export file contents.
 
 ### 7.3 Client mount hardening
 
 - Mount with `nosuid,nodev` on clients to prevent a share from being used to introduce setuid binaries or device nodes.
 - Where a client only needs to read media (e.g. Plex, a smart TV), mount that specific share read-only at the client end as well as server end — defence in depth against a misconfigured export.
-- Avoid mounting NFS shares onto the GAMES-VLAN AMP VM; if game data needs to be shared, prefer AMP's own controlled file-management features or a dedicated, narrowly-scoped export rather than a general-purpose share.
+- Avoid mounting NFS shares onto the Gaming-VLAN AMP VM; if game data needs to be shared, prefer AMP's own controlled file-management features or a dedicated, narrowly-scoped export rather than a general-purpose share.
 
 ## 8. Media — Plex
 
 ### 8.1 Deployment
 
-- Deploy plex01 as an LXC container on the SERVERS VLAN, with the media library mounted from the NFS/media dataset (bind-mount is preferable to an NFS client mount inside the container, for performance and simplicity, since both live on the same host).
+- Deploy plex01 as an LXC container on the Storage VLAN, with the media library mounted from the NFS/media dataset (bind-mount is preferable to an NFS client mount inside the container, for performance and simplicity, since both live on the same host).
 - Claim the server to the Plex account during initial setup, then immediately review Plex's own network settings to disable unnecessary remote-access convenience features that aren't required (see 8.3).
 
 ### 8.2 Hardware transcoding
@@ -315,7 +325,7 @@ Using Pi-hole's Local DNS Records (or a dedicated Unbound local-zone file for mo
 ### 8.3 Exposure considerations
 
 - Do not port-forward Plex's default port (32400) directly from WAN. If remote streaming access is wanted, either route it through the reverse proxy in the DMZ (Plex supports being reverse-proxied) or rely on Plex Relay/Plex's own remote-access negotiation, understanding that this shifts some trust to Plex's cloud infrastructure.
-- If reverse-proxying Plex, treat it exactly like any other DMZ-published service in Section 9 — the Plex backend itself still lives on the SERVERS VLAN and only the proxy's narrow allowed path reaches it (this requires a specific, tightly-scoped DMZ→SERVERS rule limited to the Plex port and proxy source IP only, as an exception to the general DMZ→SERVERS deny in 5.3.2).
+- If reverse-proxying Plex, treat it exactly like any other DMZ-published service in Section 9 — the Plex backend itself still lives on the Storage VLAN and only the proxy's narrow allowed path reaches it (this requires a specific, tightly-scoped DMZ→STORAGE rule limited to the Plex port and proxy source IP only, as an exception to the general DMZ→STORAGE deny in 5.3.2).
 - Keep Plex sharing ("Managed users"/"Home") restricted to known individuals; disable public library sharing features.
 
 ## 9. External Web Services (spaldotechoperations.co.uk)
@@ -326,7 +336,7 @@ The DMZ (VLAN 40) is the only segment that ever receives unsolicited inbound tra
 
 - Only two classes of host live in the DMZ: the reverse proxy (proxy01) and the backend web application VMs it fronts.
 - Backend web VMs accept traffic only from proxy01's address, on the application port — never directly from WAN, and never from any other internal VLAN.
-- DMZ hosts have no route to SERVERS, GAMES, or MGMT under any circumstance (5.3.2).
+- DMZ hosts have no route to MGMT, STORAGE, GAMING or IOT under any circumstance (5.3.2).
 
 ### 9.2 Reverse proxy deployment
 
@@ -353,20 +363,20 @@ For a home internet connection, consider running a Cloudflare Tunnel (or equival
 
 ### 10.1 Deployment
 
-- Deploy amp01 as a VM (not LXC — AMP and many game servers expect full kernel/networking capabilities that are easier to guarantee in a VM) on the GAMES VLAN, sized per the busiest expected concurrent instance mix (Section 3.4).
+- Deploy amp01 as a VM (not LXC — AMP and many game servers expect full kernel/networking capabilities that are easier to guarantee in a VM) on the Gaming VLAN, sized per the busiest expected concurrent instance mix (Section 3.4).
 - Install the AMP controller (ADS — Application Deployment Service) following CubeCoders' official installation instructions for the chosen Linux distribution.
-- Bind the AMP web admin panel to the GAMES-VLAN internal address only; it is reached by administrators via the WireGuard tunnel plus the MGMT→GAMES admin-port allow rule (5.3.2), never from WAN directly.
+- Bind the AMP web admin panel to the Gaming-VLAN internal address only; it is reached by administrators via the WireGuard tunnel plus the MGMT→GAMING admin-port allow rule (5.3.2), never from WAN directly.
 
 ### 10.2 Network exposure
 
-- Each hosted game server's specific client-facing port(s) are the only things ever forwarded from WAN, on a per-instance, per-port basis, targeted at amp01's GAMES-VLAN address (rule #4 in 5.3.1) — add and remove these forwards as instances are created and retired, rather than leaving a wide port range permanently open.
+- Each hosted game server's specific client-facing port(s) are the only things ever forwarded from WAN, on a per-instance, per-port basis, targeted at amp01's Gaming-VLAN address (rule #4 in 5.3.1) — add and remove these forwards as instances are created and retired, rather than leaving a wide port range permanently open.
 - Where a game supports it, prefer AMP's own per-instance firewall/allow-list features as an additional layer above the OPNsense rule.
 - Do not forward AMP's own management port (typically 8080, or as configured) from WAN under any circumstance — only game client ports are ever WAN-facing.
 
 ### 10.3 Per-instance isolation
 
 - Run each game server under its own dedicated OS user/AMP instance user, which AMP does by default — avoid running all instances as a single shared account, since a compromised game server binary should not be able to read or modify a sibling instance's files.
-- Keep GAMES-VLAN outbound rules limited to what's genuinely required (HTTP/HTTPS for updates and master-server communication, plus specific game-protocol UDP/TCP as needed) rather than a blanket allow-any-outbound, to reduce the value of the VLAN as an exfiltration or further-attack launch point if a game server is ever compromised via a malicious plugin/mod.
+- Keep Gaming-VLAN outbound rules limited to what's genuinely required (HTTP/HTTPS for updates and master-server communication, plus specific game-protocol UDP/TCP as needed) rather than a blanket allow-any-outbound, to reduce the value of the VLAN as an exfiltration or further-attack launch point if a game server is ever compromised via a malicious plugin/mod.
 - Apply OS and AMP updates to amp01 on a regular cadence — game server software (and mod/plugin ecosystems in particular) is a common vector for compromise, given how frequently third-party, less-audited code is installed by design.
 
 ## 11. Backup & Disaster Recovery
@@ -382,7 +392,7 @@ For a home internet connection, consider running a Cloudflare Tunnel (or equival
 | Guest / group | Frequency | Retention |
 | --- | --- | --- |
 | OPNsense (config export) | Weekly + before any change | 12 weekly |
-| MGMT/SERVERS guests (dns01, nfs01's config, pbs01 itself) | Daily | 7 daily, 4 weekly |
+| MGMT/STORAGE guests (dns01, nfs01's config, pbs01 itself) | Daily | 7 daily, 4 weekly |
 | DMZ guests (proxy01, web VMs) | Daily | 7 daily, 4 weekly |
 | amp01 | Daily | 7 daily, 4 weekly |
 | plex01 (config/database, not media) | Daily | 7 daily, 4 weekly |
@@ -408,7 +418,7 @@ For a home internet connection, consider running a Cloudflare Tunnel (or equival
 
 ### 12.2 Centralising logs
 
-- Ship OPNsense firewall/Suricata logs, proxy access logs, and Proxmox host auth logs to a small centralised log collector (e.g. a lightweight Syslog/Loki+Grafana stack) on the SERVERS VLAN, rather than relying on reading each system's local logs independently after the fact.
+- Ship OPNsense firewall/Suricata logs, proxy access logs, and Proxmox host auth logs to a small centralised log collector (e.g. a lightweight Syslog/Loki+Grafana stack) on the Monitoring VLAN (60, see SPO-HL-SIEM-001), rather than relying on reading each system's local logs independently after the fact.
 - Set a log retention period that balances disk usage against the ability to investigate an incident discovered some time after it began (30–90 days is a reasonable starting point for firewall/proxy logs).
 - Configure basic alerting (even simple email/webhook notifications) for: repeated failed logins to Proxmox/OPNsense/AMP, Suricata high-severity alerts, certificate expiry warnings, and backup job failures — the goal is to hear about problems from the monitoring stack, not from the service failing.
 
@@ -420,7 +430,7 @@ A consolidated checklist drawn from every section above, useful as a build-compl
 
 - [ ] Default-deny inter-VLAN policy in place and reviewed against the matrix in 5.3.2.
 - [ ] WAN inbound limited to: published HTTPS/HTTP to the proxy, WireGuard, and only currently-active game server ports.
-- [ ] No management interface (Proxmox, OPNsense, AMP, iLO) reachable from WAN or from DMZ/GAMES.
+- [ ] No management interface (Proxmox, OPNsense, AMP, iLO) reachable from WAN or from DMZ/GAMING/IOT.
 
 ### Identity & access
 
@@ -437,7 +447,7 @@ A consolidated checklist drawn from every section above, useful as a build-compl
 
 ### Perimeter
 
-- [ ] Suricata IPS active on WAN; IDS active on DMZ and GAMES.
+- [ ] Suricata IPS active on WAN; IDS active on DMZ and GAMING.
 - [ ] TLS 1.2+ enforced on all published web services; certificates auto-renewing via DNS-01.
 - [ ] fail2ban (or equivalent) active on internet-facing/administrative login endpoints.
 
@@ -478,7 +488,7 @@ Recommended build order. Each phase should be functionally verified before movin
 
 ### Phase 5 — Game hosting
 
-1. Deploy amp01 on the GAMES VLAN (10.1).
+1. Deploy amp01 on the Gaming VLAN (10.1).
 2. Stand up the first game server instance; open only its specific port(s) on WAN (10.2).
 
 ### Phase 6 — Resilience
@@ -494,25 +504,28 @@ Recommended build order. Each phase should be functionally verified before movin
 
 | VLAN | Subnet | Gateway | Key hosts |
 | --- | --- | --- | --- |
-| MGMT (10) | 10.10.10.0/24 | 10.10.10.1 | Proxmox .5, OPNsense .1, iLO .4, PBS .6 |
-| SERVERS (20) | 10.10.20.0/24 | 10.10.20.1 | dns01 .2, nfs01 .3, plex01 .4 |
-| GAMES (30) | 10.10.30.0/24 | 10.10.30.1 | amp01 .2 |
-| DMZ (40) | 10.10.40.0/24 | 10.10.40.1 | proxy01 .2, web01 .3, web02 .4 |
-| TRUSTED (50) | 10.10.50.0/24 | 10.10.50.1 | DHCP .10–.199 |
+| LAN (untagged) | 10.0.10.0/24 | 10.0.10.1 | — |
+| MGMT (90) | 10.0.99.0/24 | 10.0.99.1 | OPNsense .1, pihole-01 .10, PBS .20 (planned) |
+| STORAGE (20) | 10.0.20.0/24 | 10.0.20.1 | nfs01 .10, plex01 .11 (planned) |
+| GAMING (30) | 10.0.30.0/24 | 10.0.30.1 | amp01 .10 (planned) |
+| DMZ (40) | 10.0.40.0/24 | 10.0.40.1 | core-proxy-01 .10, ops-web-01 .20 |
+| IOT (50) | 10.0.50.0/24 | 10.0.50.1 | IoT devices |
+| MONITORING (60, planned) | 10.0.60.0/24 | 10.0.60.1 | core-siem-01 .10 |
+| Home (not a lab VLAN) | 192.168.68.0/22 | 192.168.68.1 | Proxmox .10, OPNsense WAN .62 |
 
 ### Appendix B — Port Reference
 
 | Service | Port(s) | Exposed to |
 | --- | --- | --- |
-| HTTPS (published web) | 443/tcp | WAN → proxy01 only |
-| HTTP (ACME/redirect) | 80/tcp | WAN → proxy01 only (redirect) |
+| HTTPS (published web) | 443/tcp | WAN → core-proxy-01 only, from Cloudflare ranges |
+| Plex via proxy | 8443/tcp | WAN → core-proxy-01 only |
 | WireGuard | 51820/udp | WAN → OPNsense |
-| Proxmox GUI | 8006/tcp | MGMT VLAN + WireGuard only |
+| Proxmox GUI | 8006/tcp | Home admin sources, MGMT VLAN + WireGuard only |
 | OPNsense GUI | 443/tcp (LAN) | MGMT VLAN + WireGuard only |
-| AMP admin panel | As configured (e.g. 8080/tcp) | GAMES VLAN via MGMT/WireGuard only, never WAN |
-| NFS | 2049/tcp | SERVERS + TRUSTED VLANs only |
-| DNS | 53/tcp+udp | All internal VLANs (via OPNsense forward to dns01) |
-| Plex | 32400/tcp | SERVERS VLAN; WAN only if reverse-proxied per 8.3 |
+| AMP admin panel | As configured (e.g. 8080/tcp) | Gaming VLAN via MGMT/WireGuard only, never WAN |
+| NFS | 2049/tcp | Storage VLAN + approved home clients only |
+| DNS | 53/tcp+udp | Home network and all lab VLANs → 10.0.99.10 |
+| Plex | 32400/tcp | Storage VLAN; from WAN only via core-proxy-01 per 8.3 |
 | Game server ports | Per game, variable | WAN → amp01, added/removed per active instance |
 
 ### Appendix C — Maintenance Schedule
@@ -533,3 +546,4 @@ Recommended build order. Each phase should be functionally verified before movin
 | Version | Date | Summary | Author |
 | --- | --- | --- | --- |
 | 1.0 | September 2026 | Initial technical implementation guide | Spaldotech Operations |
+| 1.1 | 22 October 2026 | Network moved to the as-built 10.0.0.0/16 design and VLAN roles | Spaldotech Operations |
