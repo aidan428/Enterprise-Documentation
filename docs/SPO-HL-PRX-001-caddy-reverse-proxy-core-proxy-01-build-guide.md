@@ -2,6 +2,8 @@
 
 > Snapshot of the live document in Claude. Edit the [live doc](https://claude.ai/artifact/AEPUVYquWxeoXZH7WQVK3j), then re-export. PDF: [SPO-HL-PRX-001-caddy-reverse-proxy-core-proxy-01-build-guide.pdf](../pdf/SPO-HL-PRX-001-caddy-reverse-proxy-core-proxy-01-build-guide.pdf)
 
+> **22 October 2026:** network addresses in this Markdown were updated to the as-built design (MGMT 10.0.99.0/24, Pi-hole 10.0.99.10, home 192.168.68.0/22). The PDF and live doc have not been re-exported yet.
+
 # Spaldotech Operations — Caddy Reverse Proxy (core-proxy-01) Build Guide
 
 Oct 17, 2026 · @Aidan Spalding
@@ -58,7 +60,7 @@ The proxy follows the Naming Convention Standard (§3.2) and the .2–.9 infrast
 | Gateway | 10.0.40.1 (OPNsense DMZ interface) |
 | DNS resolvers | 1.1.1.1, 1.0.0.1 (public; see §10) |
 | Web backends | ops-web-01 10.0.40.20 (TCP 8080) |
-| Plex backend | `<PLEX_IP>` on the Servers VLAN, TCP 32400 |
+| Plex backend | `<PLEX_IP>` on the Storage VLAN (10.0.20.0/24), TCP 32400 |
 | Public zone | spaldotechoperations.co.uk (Cloudflare DNS) |
 | Backup job | bkp-core-proxy-daily |
 
@@ -86,7 +88,7 @@ Complete these before creating the VM. Each one is a gate; do not continue past 
 - [x] The ISP router (192.168.68.1) supports port forwarding, and the line has a real public IPv4 address rather than carrier-grade NAT: the router's WAN address matches what https://ifconfig.me reports.
 - [x] OPNsense's WAN address 192.168.68.62 is static or reserved on the ISP router, so forwards never point at a stale address.
 - [x] OPNsense has a DMZ interface on VLAN 40 with address 10.0.40.1/24, DHCP off or reserved outside .2–.9.
-- [ ] The DMZ is recorded in SPO-HL-SEC-001. That standard currently lists 10.0.40.0/24 as Testing; update §2 and §8 so the tables match the built network.
+- [x] The DMZ is recorded in SPO-HL-SEC-001 §2 and §8 as VLAN 40, 10.0.40.0/24 (v1.1).
 - [ ] OPNsense configuration exported and Proxmox configuration backed up (SPO-HL-SEC-001 §3, step 1).
 - [ ] Console access to Proxmox confirmed (iLO or local), so a lockout can be recovered.
 - [ ] A Debian 13 netinst ISO is in Proxmox local storage, with its checksum verified.
@@ -138,7 +140,7 @@ policy_out: ACCEPT
 macfilter: 1
 
 [IPSET admin_src]
-10.0.10.0/24 # MGMT_NET
+10.0.99.0/24 # MGMT_NET
 192.168.68.50 # admin workstation - replace with yours
 
 [RULES]
@@ -568,9 +570,9 @@ The DMZ may reach only the Internet services the proxy needs, plus one narrow pa
 | PLEX\_HOST | Host | `<PLEX_IP>` |
 | AMP\_HOST | Host | `<AMP_IP>` |
 | RFC1918 | Network | 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 |
-| HOME\_NET | Network | 192.168.68.0/24 |
+| HOME\_NET | Network | 192.168.68.0/22 |
 | CF\_DNS | Host | 1.1.1.1, 1.0.0.1 |
-| ADMIN\_SRC | Network | 10.0.10.0/24, plus the admin workstation's 192.168.68.x/32 |
+| ADMIN\_SRC | Network | 10.0.99.0/24, plus the admin workstation's 192.168.68.x/32 |
 
 After saving CF\_IPV4, check Firewall → Diagnostics → Aliases shows it populated (around 15 prefixes) before relying on F1.
 
@@ -583,7 +585,7 @@ After saving CF\_IPV4, check Firewall → Diagnostics → Aliases shows it popul
 | 3 | Block + log | TCP/UDP | DMZ\_NET | any | 53 | No other resolvers |
 | 4 | Block + log | any | DMZ\_NET | This Firewall | any | No access to the firewall GUI or SSH |
 | 5 | Pass | TCP | DMZ\_PROXY | PLEX\_HOST | 32400 | Caddy to Plex: the only DMZ → private exception |
-| 6 | Block + log | any | DMZ\_NET | RFC1918 | any | No route to Home, MGMT, Servers or Storage |
+| 6 | Block + log | any | DMZ\_NET | RFC1918 | any | No route to Home, MGMT, Storage, Gaming, IoT or LAN |
 | 7 | Pass | TCP | DMZ\_PROXY | any | 443 | ACME, Cloudflare API and IP list, apt, Caddy downloads |
 | 8 | Pass | TCP | DMZ\_WEB | any | 443 | Backend OS updates only |
 | 9 | Block + log | any | DMZ\_NET | any | any | Default deny, logged |
@@ -619,7 +621,7 @@ The proxy accepts 443 only from Cloudflare, 8443 from anyone, and SSH from admin
 #!/usr/sbin/nft -f
 flush ruleset
 
-define ADMIN_SRC = { 10.0.10.0/24, 192.168.68.50 }
+define ADMIN_SRC = { 10.0.99.0/24, 192.168.68.50 }
 define CF_DNS    = { 1.1.1.1, 1.0.0.1 }
 define BACKENDS  = { 10.0.40.20 }
 define PLEX      = <PLEX_IP>
@@ -765,7 +767,7 @@ All tests must pass, or have a documented deviation, before further sites are pu
 | P10 | Only registered ports open | External scan of the home IP | Exactly the ports in §8.1; 32400, 80 and management ports closed |
 | P11 | Register matches devices | Compare §8.1 with ISP router forwards and OPNsense NAT rules | Identical, rule names carry F-numbers; UPnP off |
 | P12 | Dynamic DNS current | `dig +short home.spaldotechoperations.co.uk @1.1.1.1` vs https://ifconfig.me | Same address |
-| P13 | DMZ cannot reach Management | From proxy: `nc -zvw3 10.0.10.1 443`, `nc -zvw3 10.0.10.10 53` | Both time out |
+| P13 | DMZ cannot reach Management | From proxy: `nc -zvw3 10.0.99.1 443`, `nc -zvw3 10.0.99.10 53` | Both time out |
 | P14 | DMZ cannot reach Home or Proxmox | From proxy: `nc -zvw3 192.168.68.10 8006`, `nc -zvw3 192.168.68.1 80` | Both time out |
 | P15 | DMZ reaches Plex on 32400 only | From proxy: `nc -zvw3 <PLEX_IP> 32400`, then `nc -zvw3 <PLEX_IP> 22` | First succeeds, second times out |
 | P16 | Only approved DNS | From proxy: `dig @8.8.8.8 example.com +time=3` | Times out; `dig @1.1.1.1` succeeds |
@@ -830,7 +832,7 @@ sudo tar czf - /etc/caddy /etc/nftables.conf /etc/ssh/sshd_config.d \
 - [ ] nftables and cf-ips enabled per §11.
 - [ ] Tests P01–P23 passed or deviations recorded.
 - [ ] Backup job running; first config archive and OPNsense export stored off the host.
-- [ ] SPO-HL-SEC-001 tables updated to show VLAN 40 as the DMZ.
+- [x] SPO-HL-SEC-001 tables updated to show VLAN 40 as the DMZ (v1.1).
 
 ### Sources
 

@@ -2,6 +2,8 @@
 
 > Snapshot of the live document in Claude. Edit the [live doc](https://claude.ai/artifact/GhSfziQV6caA5WJ81MhQHe), then re-export. PDF: [SPO-HL-SIEM-001-central-siem-core-siem-01-build-guide.pdf](../pdf/SPO-HL-SIEM-001-central-siem-core-siem-01-build-guide.pdf)
 
+> **22 October 2026:** network addresses in this Markdown were updated to the as-built design (MGMT 10.0.99.0/24, Pi-hole 10.0.99.10, home 192.168.68.0/22). The PDF and live doc have not been re-exported yet.
+
 # Spaldotech Operations — Central SIEM (core-siem-01) Build Guide
 
 Oct 18, 2026 · @Aidan Spalding
@@ -53,7 +55,7 @@ The SIEM follows the Naming Convention Standard (§3.2) and gets its own VLAN, a
 | VLAN | 60 (MONITORING), new |
 | Subnet / gateway | 10.0.60.0/24 / 10.0.60.1 (OPNsense) |
 | Address | 10.0.60.10/24 (static) |
-| DNS | Pi-hole 10.0.10.10 |
+| DNS | Pi-hole 10.0.99.10 |
 | Wazuh version | 4.14.x (Wazuh 5.0 is still in beta; do not use it here) |
 | Backup job | bkp-core-siem-daily |
 
@@ -103,7 +105,7 @@ Agents always connect inward to the SIEM, and the SIEM never needs to open a con
 | SIEM\_HOST | Host | 10.0.60.10 |
 | MON\_NET | Network | 10.0.60.0/24 |
 | WAZUH\_AGENT\_PORTS | Port | 1514, 1515 |
-| PIHOLE | Host | 10.0.10.10 |
+| PIHOLE | Host | 10.0.99.10 |
 | PVE\_HOST | Host | 192.168.68.10 |
 
 ADMIN\_SRC and RFC1918 already exist from SPO-HL-PRX-001 §10.1.
@@ -116,8 +118,8 @@ Add one pass rule on each interface that has agents behind it. On interfaces tha
 | --- | --- | --- | --- | --- |
 | MGMT | MGMT\_NET | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Pi-hole and other MGMT hosts |
 | DMZ | DMZ\_NET | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Proxy and web VM. Insert above rule 6 in SPO-HL-PRX-001 §10.2 |
-| SERVERS | SERVER\_NET | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Plex, NFS and similar |
-| GAMES / Testing / STORAGE | that interface's net | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Each segment that has VMs |
+| Storage | STORAGE\_NET | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Plex, NFS and similar |
+| Gaming / IoT / LAN | that interface's net | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | Each segment that has VMs |
 | WAN (home side, routed) | PVE\_HOST | SIEM\_HOST | TCP WAZUH\_AGENT\_PORTS | The Proxmox host's agent |
 | MGMT and WAN (home side) | ADMIN\_SRC | SIEM\_HOST | TCP 443, 22 | Dashboard and SSH |
 
@@ -186,7 +188,7 @@ macfilter: 1
 192.168.68.10 # Proxmox host
 
 [IPSET admin_src]
-10.0.10.0/24 # MGMT_NET
+10.0.99.0/24 # MGMT_NET
 192.168.68.50 # admin workstation - replace with yours
 
 [RULES]
@@ -200,7 +202,7 @@ IN Ping(ACCEPT) -source +admin_src -log nolog
 ### 5.3 Install Ubuntu Server 24.04
 
 1. Choose **Ubuntu Server (minimized)**.
-2. Network: manual IPv4, 10.0.60.10/24, gateway 10.0.60.1, name server 10.0.10.10, search domain `intraspald.tech`.
+2. Network: manual IPv4, 10.0.60.10/24, gateway 10.0.60.1, name server 10.0.99.10, search domain `intraspald.tech`.
 3. Storage: use the entire disk with LVM. Expand the root logical volume to the full disk when the installer offers it; it defaults to half.
 4. Profile: hostname `core-siem-01`, user `sysadmin`.
 5. Tick **Install OpenSSH server**. Import your SSH key if offered. Install no featured snaps.
@@ -233,7 +235,7 @@ sudo ufw default allow outgoing
 sudo ufw allow from 10.0.0.0/16   to any port 1514,1515 proto tcp
 sudo ufw allow from 192.168.68.10 to any port 1514,1515 proto tcp
 sudo ufw allow from 10.0.60.1     to any port 514 proto udp
-sudo ufw allow from 10.0.10.0/24  to any port 22,443 proto tcp
+sudo ufw allow from 10.0.99.0/24  to any port 22,443 proto tcp
 sudo ufw allow from 192.168.68.50 to any port 22,443 proto tcp   # admin workstation
 sudo ufw enable
 sudo ufw status numbered
@@ -321,7 +323,7 @@ sudo /var/ossec/bin/agent_groups -l
 | Host | Address | Groups | Notes |
 | --- | --- | --- | --- |
 | pve-01 (Proxmox host) | 192.168.68.10 | linux, proxmox | Debian-based; enrol last, once the method is proven |
-| pihole-01 | 10.0.10.10 | linux, dns |  |
+| pihole-01 | 10.0.99.10 | linux, dns |  |
 | core-proxy-01 | 10.0.40.10 | linux, dmz-proxy | Open the nftables egress first (§4.5) |
 | Web VM | 10.0.40.20 | linux, dmz-web |  |
 | Plex, NFS, AMP | as built | linux, plus a role group | Add when each VM is built |
@@ -703,7 +705,7 @@ Each alerting test proves the whole chain: the event is collected, a rule fires,
 | W10 | SSH brute force | From an admin source, 8 failed SSH logins to pihole-01 with a wrong user | Brute-force alert at level 10; email arrives |
 | W11 | Web scanning | Externally: `for i in $(seq 25); do curl -s -o /dev/null https://www.spaldotechoperations.co.uk/nope$i; done` | Rule 100102 fires; email arrives; visitor IP is the test device |
 | W12 | Proxmox login failures | 5 failed logins to the Proxmox web UI within 5 minutes | Rule 100111 fires; email arrives |
-| W13 | Firewall blocks decoded | From core-proxy-01: `nc -zvw3 10.0.10.1 443` | Block event with decoded source, destination and port |
+| W13 | Firewall blocks decoded | From core-proxy-01: `nc -zvw3 10.0.99.1 443` | Block event with decoded source, destination and port |
 | W14 | Suricata alerts decoded | From the OPNsense shell: `curl -s http://testmynids.org/uid/index.html` | Suricata alert visible with decoded signature fields |
 | W15 | Vulnerability results | Vulnerability Detection page, a few hours after enrolment | Each agent shows a package inventory and findings |
 | W16 | Retention policy attached | Index Management → Indices | `wazuh-alerts-*` indices show the `wazuh-alerts-90d` policy |

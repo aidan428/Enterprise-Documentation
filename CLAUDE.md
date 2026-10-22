@@ -16,7 +16,7 @@ The standards every guide must follow live in `context/`:
 | --- | --- | --- | --- | --- |
 | Home | — | 192.168.68.0/22 | 192.168.68.1 | ISP router; Proxmox 192.168.68.10; OPNsense WAN 192.168.68.62 |
 | LAN | untagged | 10.0.10.0/24 | 10.0.10.1 | OPNsense vtnet1 |
-| MGMT | 90 | 10.0.99.0/24 | 10.0.99.1 | Pi-hole 10.0.99.10 |
+| MGMT | 99 | 10.0.99.0/24 | 10.0.99.1 | Pi-hole 10.0.99.10 |
 | Storage | 20 | 10.0.20.0/24 | 10.0.20.1 | |
 | Gaming | 30 | 10.0.30.0/24 | 10.0.30.1 | AMP |
 | DMZ | 40 | 10.0.40.0/24 | 10.0.40.1 | core-proxy-01 .10, ops-web-01 .20 |

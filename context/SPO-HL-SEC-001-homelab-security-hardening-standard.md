@@ -62,7 +62,7 @@ The environment follows least privilege, default deny between security zones, ma
 | --- | --- | --- | --- | --- | --- |
 | Home | 192.168.68.0/22 | WAN (vtnet0) | — | Upstream trusted-but-external network | HOME_NET |
 | LAN | 10.0.10.0/24 / 10.0.10.1 | LAN (vtnet1) | untagged | Default lab LAN | LAN_NET |
-| Management | 10.0.99.0/24 / 10.0.99.1 | vlanMGMT (vlan01) | 90 | Infrastructure administration, DNS | MGMT_NET |
+| Management | 10.0.99.0/24 / 10.0.99.1 | vlanMGMT (vlan01) | 99 | Infrastructure administration, DNS | MGMT_NET |
 | Storage | 10.0.20.0/24 / 10.0.20.1 | vlanStorage (vlan04) | 20† | Storage services | STORAGE_NET |
 | Gaming | 10.0.30.0/24 / 10.0.30.1 | vlanGaming (vlan05) | 30† | Game servers (AMP) | GAMING_NET |
 | DMZ | 10.0.40.0/24 / 10.0.40.1 | vlanDMZ (vlan03) | 40 | Internet-facing services | DMZ_NET |

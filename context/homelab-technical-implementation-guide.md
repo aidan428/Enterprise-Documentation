@@ -100,7 +100,7 @@ Suggested logical carve-up of the 4TB (adjust to actual free space after the abo
 
 The host itself should carry minimal network exposure. Configure Linux bridges as follows:
 
-- **vmbr0** — trunk bridge carrying all internal VLANs (20/30/40/50/90, plus 60 once Monitoring is built), connected to the physical NIC that runs to your managed switch trunk port. VM/LXC virtual NICs attach here with a VLAN tag set per-guest (Proxmox supports VLAN-aware bridges natively — enable "VLAN aware" on vmbr0).
+- **vmbr0** — trunk bridge carrying all internal VLANs (20/30/40/50/99, plus 60 once Monitoring is built), connected to the physical NIC that runs to your managed switch trunk port. VM/LXC virtual NICs attach here with a VLAN tag set per-guest (Proxmox supports VLAN-aware bridges natively — enable "VLAN aware" on vmbr0).
 - **vmbr1** — dedicated to the WAN physical NIC, with no IP configured on the Proxmox host side at all. This interface is passed straight through to the OPNsense VM (Section 5.1); the host should not have a routable presence on the WAN segment.
 - The Proxmox management IP itself lives only as a VLAN-tagged interface on vmbr0 within the Management VLAN — it must not be reachable from the Gaming, IoT or DMZ VLANs (enforced later in OPNsense firewall rules, Section 5.3).
 
@@ -145,7 +145,7 @@ The design uses a single physical firewall (OPNsense, virtualised) as the sole b
 | VLAN ID | Name | Subnet | Purpose | Internet access |
 | --- | --- | --- | --- | --- |
 | — | LAN | 10.0.10.0/24 | Default lab LAN (untagged, OPNsense vtnet1) | Outbound |
-| 90 | MGMT | 10.0.99.0/24 | OPNsense GUI, Pi-hole/Unbound, iLO, PBS | Outbound updates only, no inbound |
+| 99 | MGMT | 10.0.99.0/24 | OPNsense GUI, Pi-hole/Unbound, iLO, PBS | Outbound updates only, no inbound |
 | 20 | STORAGE | 10.0.20.0/24 | NFS, Plex | Outbound only |
 | 30 | GAMING | 10.0.30.0/24 | CubeCoders AMP and hosted game server instances | Outbound + specific inbound game ports only |
 | 40 | DMZ | 10.0.40.0/24 | Reverse proxy, published web VMs | Inbound 443 and 8443 (proxy only), outbound restricted |
@@ -190,7 +190,7 @@ Confirm physical port mapping against the DL380 Gen9's NIC layout before wiring:
 | --- | --- | --- |
 | WAN | Physical NIC (PCIe passthrough) | Internet uplink, holds public IP |
 | LAN (trunk) | Virtual NIC on vmbr0 | Parent interface for all VLAN sub-interfaces |
-| vlanMGMT (VLAN 90) | Sub-interface of LAN | OPNsense GUI, Pi-hole, iLO, PBS |
+| vlanMGMT (VLAN 99) | Sub-interface of LAN | OPNsense GUI, Pi-hole, iLO, PBS |
 | vlanStorage (VLAN 20) | Sub-interface of LAN | NFS, Plex |
 | vlanGaming (VLAN 30) | Sub-interface of LAN | AMP and game server instances |
 | vlanDMZ (VLAN 40) | Sub-interface of LAN | Reverse proxy, published web VMs |
@@ -505,7 +505,7 @@ Recommended build order. Each phase should be functionally verified before movin
 | VLAN | Subnet | Gateway | Key hosts |
 | --- | --- | --- | --- |
 | LAN (untagged) | 10.0.10.0/24 | 10.0.10.1 | — |
-| MGMT (90) | 10.0.99.0/24 | 10.0.99.1 | OPNsense .1, pihole-01 .10, PBS .20 (planned) |
+| MGMT (99) | 10.0.99.0/24 | 10.0.99.1 | OPNsense .1, pihole-01 .10, PBS .20 (planned) |
 | STORAGE (20) | 10.0.20.0/24 | 10.0.20.1 | nfs01 .10, plex01 .11 (planned) |
 | GAMING (30) | 10.0.30.0/24 | 10.0.30.1 | amp01 .10 (planned) |
 | DMZ (40) | 10.0.40.0/24 | 10.0.40.1 | core-proxy-01 .10, ops-web-01 .20 |
