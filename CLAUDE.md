@@ -10,7 +10,7 @@ The standards every guide must follow live in `context/`:
 - `context/homelab-technical-implementation-guide.md` — original target architecture (10.10.x.0/24 VLAN plan, WireGuard, DMZ, AMP, PBS).
 - `context/naming-convention-standard.md` — naming for hosts, VMs, DNS, cloud, identity. New resources use `<tenant>-<role>-<seq>` (e.g. `core-proxy-01`) and `intraspald.tech` internally.
 
-Where the implementation guide and the hardening standard disagree on addresses, the hardening standard and the guides in `docs/` reflect what is actually running.
+**Address space: the lab uses 10.0.0.0/16 (10.0.x.0/24 per VLAN).** Use it for all new work. The 10.10.x.x addresses in the implementation guide, and `core` = 10.10.0.0/16 in section 3.4 of the naming standard, are superseded; where they disagree, the hardening standard and the guides in `docs/` reflect what is actually running.
 
 ## Conventions
 
